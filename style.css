@@ -1,14 +1,12 @@
-/*
---coral: #ff8552ff;
---nyanza: #dfefcaff;
---wintergreen-dream: #4c8577ff;
---onyx: #313638ff;
-*/
-
 * {
   margin: 0;
   padding: 0;
   font-family: Arial, Helvetica, sans-serif;
+}
+
+body
+{
+  background-color: #313638;
 }
 
 .focus-bar {
@@ -19,7 +17,7 @@
   height: 2em;
   overflow: hidden;
   border-radius: 0.2em;
-  /*border: solid 2px #313638;*/
+  border: solid 2px #fdfdfd;
 }
 
 .focus-bar > div {
@@ -53,12 +51,12 @@
   height: 100%;
 }
 
-.min-bar {
+#min-bar {
   width: 75%;
   background-color: #ff8552;
 }
 
-.max-bar {
+#max-bar {
   width: 90%;
   background-color: #4c8577;
 }
