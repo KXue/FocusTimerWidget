@@ -9,9 +9,9 @@ const INTERVALS = {
 let userOptions = {};
 const DUMMY_DATA = {
   channelName: "TEST",
-  maxTime: 60,
-  minTime: 25,
-  adaptiveBreak: true,
+  maxTime: 10,
+  minTime: 5,
+  adaptive: true,
   autoStart: true,
   breakFactor: 0.2,
   longBreakFactor: 0.6,
@@ -46,31 +46,36 @@ class Timer{
   SetUpdateCallback(callback){
     this.updateCallback = callback;
   }
-  Update(){
-    this.elapsed = Date.now() - this.startTime;
-    if (this.updateCallback){
-      this.updateCallback();
+  Update(self){
+    self.elapsed = Date.now() - self.startTime;
+    console.log("Update: " + self.startTime);
+    console.log(self);
+    if (self.updateCallback){
+      self.updateCallback();
     }
-    if (this.elapsed >= this.totalTime){
-      if (this.doneCallback){
-        this.doneCallback();
+    if (self.elapsed >= self.totalTime){
+      if (self.doneCallback){
+        self.doneCallback();
       }
-      Stop();
     }
   }
   Start(){
+    console.log(this);
     this.startTime = Date.now();
+    console.log("start:" + this.startTime);
     if (this.elapsed){ // resume logic
       this.startTime -= this.elapsed;
     }
     this.elapsed = 0;
-    this.timer = setInterval(this.Update, 1000);
+    this.timer = setInterval(this.Update, 1000, this);
   }
   Pause(){
+    console.log("pause");
     clearInterval(this.timer);
     this.timer = null;
   }
   Stop(){
+    console.log("stop");
     this.elapsed = 0;
     clearInterval(this.timer);
     this.timer = null;
@@ -83,29 +88,73 @@ let intervalCount = 0;
 let minBar = null;
 let maxBar = null;
 let focusLabel = null;
+const timeHistory = [];
+const historyLength = 5;
 
 function DrawBar(timer, interval)
 {
   let fraction = timer.elapsed / timer.totalTime;
-
+  console.log("Draw: " + fraction);
   switch(interval){
     case INTERVALS.WORK:
-      
+      minBar.style.width = ((1 - fraction) * 100) + "%";
+      focusLabel.textContent = "Work";
       break;
     case INTERVALS.OVERTIME:
+      minBar.style.width = "0px";
+      maxBar.style.width = ((1 - fraction) * 100) + "%";
+      focusLabel.textContent = "Overtime";
       break;
     default: // break
+      maxBar.style.width = "0px";
+      minBar.style.width = (fraction * 100) + "%";
+      focusLabel.textContent = "Chill";
       break;
   }
 }
 
-function StartTimer(){
+function Overtime()
+{
+  currInterval = INTERVALS.OVERTIME;
+  timer.SetDoneCallback(Next);
+  timer.SetTimeLimit(userOptions.maxTime - timer.elapsed);
+  timer.Start();
+}
+
+function StartTimer()
+{
   timer.Start();
 }
 
 function PauseTimer()
 {
   timer.Pause();
+}
+
+function GetWorkTime(history)
+{
+  if (userOptions.adaptive && history != null && history.length > 0)
+  {
+    let totalTime = 0;
+    for (let time in history)
+    {
+      totalTime += time;
+    }
+    return totalTime / history.length;
+  }
+  else
+  {
+    return userOptions.minTime;
+  }
+}
+
+function LogTime(time, history, historyLength)
+{
+  if (history.length >= historyLength)
+  {
+    history.shift();
+  }
+  history.push(time);
 }
 
 function Next()
@@ -115,19 +164,34 @@ function Next()
   {
     case INTERVALS.WORK:
     case INTERVALS.OVERTIME:
+      let timeElapsed = timer.elapsed;
+      
+      if (currInterval == INTERVALS.OVERTIME) 
+      {
+        timeElapsed += GetWorkTime(timeHistory); 
+      }
+
+      LogTime(timeElapsed, timeHistory, historyLength);
+
       intervalCount++;
+      let breakTime = 0;
 
       if (intervalCount % userOptions.longBreakInterval == 0)
       {
         currInterval = INTERVALS.LONG_BREAK;
+        breakTime =  timeElapsed * userOptions.longBreakFactor;
       }
       else
       {
         currInterval = INTERVALS.BREAK;
+        breakTime = timeElapsed * userOptions.breakFactor;
       }
+
+      timer.SetTimeLimit(breakTime);
     break;
     default:
       currInterval = INTERVALS.WORK;
+      timer.SetDoneCallback(Overtime);
     break;
   }
   if (!userOptions.autoStart)
@@ -167,7 +231,6 @@ function CreateCommands()
 
 window.addEventListener(loadEventName, function (obj) 
 {
-  console.log(obj);
   if (obj.detail != null) 
   {
     userOptions = obj.detail.fieldData;
@@ -177,13 +240,16 @@ window.addEventListener(loadEventName, function (obj)
   {
     userOptions = DUMMY_DATA;
   }
-
-  timer = new Timer(userOptions.minTime, Next, function(){
+  userOptions.minTime *= 60000; // converting minutes to milliseconds
+  userOptions.maxTime *= 60000;
+  timer = new Timer(userOptions.minTime, Overtime, function()
+  {
     DrawBar(timer, currInterval);
   });
   minBar = document.getElementById("min-bar");
   maxBar = document.getElementById("max-bar");
   focusLabel = document.getElementById("focus-label");
+  DrawBar(timer, currInterval);
 });
 
 function IsModMessage(obj)
@@ -194,15 +260,18 @@ function IsModMessage(obj)
 window.addEventListener('onEventReceived', function (obj) {
   if (IsModMessage(obj)){
     let event = obj.detail.event;
-    COMMANDS.forEach((value)=>{
-      if (value.condition.test(event.message)){
-        if (value.execArgs){
-          value.callback(value.condition.exec(event.message));
+    for (let command in COMMANDS){
+      if (command.condition.test(event.message))
+      {
+        if (command.execArgs)
+        {
+          command.callback(command.condition.exec(event.message));
         }
-        else{
-          value.callback();
+        else
+        {
+          command.callback();
         }
       }
-    });
+    }
   }
 });
